@@ -70,6 +70,16 @@ NOTION_HEADERS = {
     "Content-Type": "application/json",
 }
 
+# Some publications block the default python-requests user agent. This
+# doesn't help if a site is blocking by IP range (some do block known
+# cloud/datacenter ranges, which GitHub Actions runners are), but it's a
+# real fix for plain user-agent-based bot filters, which is more common.
+BROWSER_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/plain, */*",
+}
+
 # Reddit is deliberately NOT in this list — if its keys are missing, the
 # script just skips that one source instead of failing. This is the only
 # source that needs an approved developer account right now.
@@ -191,6 +201,7 @@ def fetch_substack():
             r = requests.get(
                 f"https://{pub}.substack.com/api/v1/archive",
                 params={"sort": "new", "limit": 10},
+                headers={**BROWSER_HEADERS, "Referer": f"https://{pub}.substack.com/"},
                 timeout=15,
             )
             r.raise_for_status()
@@ -223,7 +234,13 @@ def get_existing_urls():
             json=payload,
             timeout=15,
         )
-        r.raise_for_status()
+        if r.status_code >= 300:
+            print(f"  [notion] could not query the database: {r.status_code} {r.text[:300]}")
+            if r.status_code == 404:
+                print("  [notion] a 404 here almost always means the database hasn't been")
+                print("  [notion] shared with your integration yet. Fix: open the database in")
+                print("  [notion] Notion -> ••• (top right) -> Connections -> add your integration.")
+            sys.exit(1)
         data = r.json()
         for page in data["results"]:
             url_val = page["properties"].get("Source URL", {}).get("url")
@@ -305,6 +322,8 @@ def save_to_notion(item, scored):
     r = requests.post("https://api.notion.com/v1/pages", headers=NOTION_HEADERS, json=payload, timeout=15)
     if r.status_code >= 300:
         print(f"  [notion] failed to save '{item['title'][:50]}': {r.status_code} {r.text[:200]}")
+        if r.status_code == 404:
+            print("  [notion] check the database is shared with your integration (see README)")
 
 
 # ---------------------------------------------------------------------------
