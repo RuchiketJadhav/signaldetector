@@ -1,0 +1,30 @@
+name: Daily Content Idea Pull
+
+on:
+  schedule:
+    - cron: "0 13 * * *"   # 13:00 UTC every day — edit to taste
+  workflow_dispatch: {}     # adds a "Run workflow" button for manual testing
+
+jobs:
+  pull-ideas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r requirements.txt
+
+      - run: python content_idea_bot.py
+        env:
+          # Required
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
+          NOTION_DATABASE_ID: ${{ secrets.NOTION_DATABASE_ID }}
+          # Optional — leave these two secrets unset entirely and Reddit is
+          # skipped automatically; everything else still runs fine.
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+          REDDIT_USER_AGENT: ${{ secrets.REDDIT_USER_AGENT }}
