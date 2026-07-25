@@ -4,7 +4,7 @@ Daily content-idea bot — tuned for HydraDB's actual positioning and pillars.
 Pulls raw signal from dev.to, Hacker News, and Substack (all zero-signup),
 plus Reddit if credentials are provided, scores each item against HydraDB's
 real brand context with a single OpenAI call (relevance, narrative strength,
-Where to write, funnel stage, framing-risk check), and writes anything above
+format, funnel stage, framing-risk check), and writes anything above
 MIN_SCORE_TO_SAVE into a Notion database as a new row.
 
 Only 3 secrets are required to run at all: OPENAI_API_KEY, NOTION_API_KEY,
@@ -20,8 +20,10 @@ Only dependency: requests.
 
 import json
 import os
+import re
 import sys
 import time
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 
 import requests
@@ -35,6 +37,12 @@ REDDIT_MIN_SCORE = 10          # these are smaller/more niche subreddits than ge
 REDDIT_TIME_WINDOW = "day"     # day | week
 
 DEVTO_TAGS = ["ai", "machinelearning", "database", "llm"]
+
+# Medium killed most of its public read API years ago, but per-tag RSS feeds
+# still work with no auth. Tag slugs are Medium's own lowercase-hyphenated
+# names shown on medium.com/tag/... — the broad ones below are near-certain
+# to exist; niche ones may need adjusting if a feed comes back empty.
+MEDIUM_TAGS = ["artificial-intelligence", "machine-learning", "graph-database", "vector-database"]
 
 # Hacker News needs no API key at all (Algolia's public HN search API).
 # Keyword-based since HN has no per-topic feeds like subreddits do.
@@ -96,11 +104,12 @@ MIN_SCORE_TO_SAVE = 6  # 0-10 — only items scoring at/above this get saved
 # your Notion columns.
 NOTION_PROPS = {
     "idea": "Idea",
-    "Where to write": "Where to write",
+    "format": "Format",
     "score": "Score",
     "narrative_score": "Narrative Score",
     "funnel_stage": "Funnel Stage",
     "framing_risk": "Framing Risk",
+    "pain_point": "Pain Point",
     "source_platform": "Source Platform",
     "source_url": "Source URL",
     "why": "Why",
@@ -261,6 +270,39 @@ def fetch_hackernews():
     return items
 
 
+def fetch_medium():
+    items = []
+    for tag in MEDIUM_TAGS:
+        try:
+            r = requests.get(
+                f"https://medium.com/feed/tag/{tag}",
+                headers=BROWSER_HEADERS,
+                timeout=15,
+            )
+            r.raise_for_status()
+        except requests.RequestException as e:
+            print(f"  [medium] skipped tag '{tag}': {e}")
+            continue
+        try:
+            root = ET.fromstring(r.text)
+        except ET.ParseError as e:
+            print(f"  [medium] could not parse feed for '{tag}': {e}")
+            continue
+        for item_el in root.findall(".//item")[:10]:
+            title = item_el.findtext("title") or ""
+            link = item_el.findtext("link") or ""
+            raw_desc = item_el.findtext("description") or ""
+            body = re.sub("<[^<]+?>", "", raw_desc).strip()[:500]  # strip HTML tags
+            items.append({
+                "platform": "medium",
+                "title": title,
+                "body": body,
+                "url": link,
+                "engagement": 0,  # RSS doesn't expose claps/responses
+            })
+    return items
+
+
 def fetch_substack():
     items = []
     for pub in SUBSTACK_PUBLICATIONS:
@@ -370,7 +412,7 @@ Score this on FOUR dimensions:
    with a debate, a misconception, a complaint, or a contrarian angle
    score higher here than neutral tutorials, even if both are relevant.
 
-3. Where to write: the single best fit — one of "blog", "linkedin", "devto",
+3. format: the single best fit — one of "blog", "linkedin", "devto",
    "youtube". Judge this by the CONTENT's durability, not the source
    platform's house style or tone — Hacker News and GitHub posts are
    frequently opinion-shaped or launch-shaped by default (that's just HN's
@@ -396,10 +438,18 @@ framing_risk to true if the natural way to write this topic would tempt
 that mistake (e.g. anything about memory-layer products directly), so a
 human editor knows to watch for it. Otherwise false.
 
+Finally, pain_point: only if this item clearly expresses a SPECIFIC
+complaint, frustration, or unsolved problem someone is actually dealing
+with (not just a neutral announcement, benchmark, or tutorial) — summarize
+it in one short phrase, e.g. "vector search loses relationship context at
+scale" or "agents keep forgetting context between sessions." Most items
+won't have one — don't force it. If there's no clear pain point, use "".
+
 Respond with ONLY a JSON object, no other text, in this exact shape:
 {{"relevance_score": <int 0-10>, "narrative_score": <int 0-10>,
-  "Where to write": "<blog|linkedin|devto|youtube>", "funnel_stage": "<TOFU|MOFU|BOFU>",
-  "framing_risk": <true|false>, "reason": "<one sentence>"}}
+  "format": "<blog|linkedin|devto|youtube>", "funnel_stage": "<TOFU|MOFU|BOFU>",
+  "framing_risk": <true|false>, "pain_point": "<short phrase or empty string>",
+  "reason": "<one sentence>"}}
 """
     r = requests.post(
         "https://api.openai.com/v1/chat/completions",
@@ -422,7 +472,8 @@ Respond with ONLY a JSON object, no other text, in this exact shape:
     except json.JSONDecodeError:
         print(f"  [score] could not parse response: {text[:200]}")
         return None
-    required = ("relevance_score", "narrative_score", "Where to write", "funnel_stage", "framing_risk", "reason")
+    required = ("relevance_score", "narrative_score", "format", "funnel_stage",
+                "framing_risk", "pain_point", "reason")
     if not all(k in parsed for k in required):
         print(f"  [score] response missing expected fields: {text[:200]}")
         return None
@@ -439,11 +490,12 @@ def save_to_notion(item, scored):
         "parent": {"database_id": NOTION_DATABASE_ID},
         "properties": {
             p["idea"]: {"title": [{"text": {"content": item["title"][:200]}}]},
-            p["Where to write"]: {"select": {"name": scored["Where to write"]}},
+            p["format"]: {"select": {"name": scored["format"]}},
             p["score"]: {"number": scored["relevance_score"]},
             p["narrative_score"]: {"number": scored["narrative_score"]},
             p["funnel_stage"]: {"select": {"name": scored["funnel_stage"]}},
             p["framing_risk"]: {"checkbox": bool(scored["framing_risk"])},
+            p["pain_point"]: {"rich_text": [{"text": {"content": scored["pain_point"][:300]}}] if scored["pain_point"] else []},
             p["source_platform"]: {"select": {"name": item["platform"]}},
             p["source_url"]: {"url": item["url"]},
             p["why"]: {"rich_text": [{"text": {"content": scored["reason"][:500]}}]},
@@ -471,7 +523,9 @@ def save_to_hydradb(item, scored):
     text = (
         f"[{item['platform']}] {item['title']} — {scored['reason']} "
         f"(relevance {scored['relevance_score']}/10, narrative {scored['narrative_score']}/10, "
-        f"Where to write: {scored['Where to write']}, funnel: {scored['funnel_stage']}) Source: {item['url']}"
+        f"format: {scored['format']}, funnel: {scored['funnel_stage']})"
+        + (f" Pain point: {scored['pain_point']}." if scored["pain_point"] else "")
+        + f" Source: {item['url']}"
     )
     r = requests.post(
         "https://api.hydradb.com/memories/add_memory",
@@ -502,7 +556,7 @@ def main():
     validate_notion_schema()
 
     print("Fetching raw items...")
-    raw = fetch_reddit() + fetch_devto() + fetch_hackernews() + fetch_substack()
+    raw = fetch_reddit() + fetch_devto() + fetch_hackernews() + fetch_medium() + fetch_substack()
     print(f"  found {len(raw)} raw items")
 
     print("Checking against existing Notion rows...")
@@ -522,8 +576,9 @@ def main():
             if save_to_notion(item, scored):
                 saved += 1
                 flag = " ⚠ framing risk" if scored["framing_risk"] else ""
+                pain = f" | pain point: {scored['pain_point']}" if scored["pain_point"] else ""
                 print(f"  saved (rel {scored['relevance_score']}/10, narr {scored['narrative_score']}/10, "
-                      f"{scored['Where to write']}, {scored['funnel_stage']}){flag}: {item['title'][:60]}")
+                      f"{scored['format']}, {scored['funnel_stage']}){flag}{pain}: {item['title'][:60]}")
                 if save_to_hydradb(item, scored):
                     hydradb_saved += 1
             else:
