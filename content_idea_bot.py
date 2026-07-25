@@ -371,10 +371,20 @@ Score this on FOUR dimensions:
    score higher here than neutral tutorials, even if both are relevant.
 
 3. format: the single best fit — one of "blog", "linkedin", "devto",
-   "youtube". Don't default to "blog" for everything technical: if the raw
-   material has a strong opinion, debate, or hot-take shape, that's often
-   a BETTER fit for "linkedin" (a reaction/POV post) than a full article,
-   even when the source itself is a technical thread.
+   "youtube". Judge this by the CONTENT's durability, not the source
+   platform's house style or tone — Hacker News and GitHub posts are
+   frequently opinion-shaped or launch-shaped by default (that's just HN's
+   culture), so "sounds opinionated" is NOT a reason by itself to pick
+   "linkedin." Ask instead: would this still be worth reading in 3 months?
+   - Pick "linkedin" only when the value is genuinely TIME-BOUND: a live
+     debate, a launch, a hot take worth reacting to this week, where a full
+     article would be overkill for what's actually being said.
+   - Pick "blog" or "devto" when there's enough substance to teach
+     something durable and specific to a pillar — even if the raw source
+     was a casual rant or a Show HN post, a real evergreen engineering
+     problem deserves the deeper treatment, not just a reaction.
+   Most technical, pillar-relevant items should still land on blog/devto by
+   default; reserve linkedin for the genuinely timely minority.
 
 4. funnel_stage: "TOFU" (doesn't know they need a graph DB yet — lead with
    an engineering problem), "MOFU" (knows the category, evaluating
