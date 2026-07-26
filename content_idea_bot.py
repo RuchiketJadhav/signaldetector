@@ -4,7 +4,7 @@ Daily content-idea bot — tuned for HydraDB's actual positioning and pillars.
 Pulls raw signal from dev.to, Hacker News, and Substack (all zero-signup),
 plus Reddit if credentials are provided, scores each item against HydraDB's
 real brand context with a single OpenAI call (relevance, narrative strength,
-format, funnel stage, framing-risk check), and writes anything above
+Where to write, funnel stage, framing-risk check), and writes anything above
 MIN_SCORE_TO_SAVE into a Notion database as a new row.
 
 Only 3 secrets are required to run at all: OPENAI_API_KEY, NOTION_API_KEY,
@@ -104,7 +104,7 @@ MIN_SCORE_TO_SAVE = 6  # 0-10 — only items scoring at/above this get saved
 # your Notion columns.
 NOTION_PROPS = {
     "idea": "Idea",
-    "format": "Format",
+    "Where_to_write": "Where to write",
     "score": "Score",
     "narrative_score": "Narrative Score",
     "funnel_stage": "Funnel Stage",
@@ -412,7 +412,7 @@ Score this on FOUR dimensions:
    with a debate, a misconception, a complaint, or a contrarian angle
    score higher here than neutral tutorials, even if both are relevant.
 
-3. format: the single best fit — one of "blog", "linkedin", "devto",
+3. Where_to_write: the single best fit — one of "blog", "linkedin", "devto",
    "youtube". Judge this by the CONTENT's durability, not the source
    platform's house style or tone — Hacker News and GitHub posts are
    frequently opinion-shaped or launch-shaped by default (that's just HN's
@@ -447,7 +447,7 @@ won't have one — don't force it. If there's no clear pain point, use "".
 
 Respond with ONLY a JSON object, no other text, in this exact shape:
 {{"relevance_score": <int 0-10>, "narrative_score": <int 0-10>,
-  "format": "<blog|linkedin|devto|youtube>", "funnel_stage": "<TOFU|MOFU|BOFU>",
+  "Where_to_write": "<blog|linkedin|devto|youtube>", "funnel_stage": "<TOFU|MOFU|BOFU>",
   "framing_risk": <true|false>, "pain_point": "<short phrase or empty string>",
   "reason": "<one sentence>"}}
 """
@@ -472,7 +472,7 @@ Respond with ONLY a JSON object, no other text, in this exact shape:
     except json.JSONDecodeError:
         print(f"  [score] could not parse response: {text[:200]}")
         return None
-    required = ("relevance_score", "narrative_score", "format", "funnel_stage",
+    required = ("relevance_score", "narrative_score", "Where_to_write", "funnel_stage",
                 "framing_risk", "pain_point", "reason")
     if not all(k in parsed for k in required):
         print(f"  [score] response missing expected fields: {text[:200]}")
@@ -490,7 +490,7 @@ def save_to_notion(item, scored):
         "parent": {"database_id": NOTION_DATABASE_ID},
         "properties": {
             p["idea"]: {"title": [{"text": {"content": item["title"][:200]}}]},
-            p["format"]: {"select": {"name": scored["format"]}},
+            p["Where_to_write"]: {"select": {"name": scored["Where_to_write"]}},
             p["score"]: {"number": scored["relevance_score"]},
             p["narrative_score"]: {"number": scored["narrative_score"]},
             p["funnel_stage"]: {"select": {"name": scored["funnel_stage"]}},
@@ -523,7 +523,7 @@ def save_to_hydradb(item, scored):
     text = (
         f"[{item['platform']}] {item['title']} — {scored['reason']} "
         f"(relevance {scored['relevance_score']}/10, narrative {scored['narrative_score']}/10, "
-        f"format: {scored['format']}, funnel: {scored['funnel_stage']})"
+        f"Where to write: {scored['Where_to_write']}, funnel: {scored['funnel_stage']})"
         + (f" Pain point: {scored['pain_point']}." if scored["pain_point"] else "")
         + f" Source: {item['url']}"
     )
@@ -578,7 +578,7 @@ def main():
                 flag = " ⚠ framing risk" if scored["framing_risk"] else ""
                 pain = f" | pain point: {scored['pain_point']}" if scored["pain_point"] else ""
                 print(f"  saved (rel {scored['relevance_score']}/10, narr {scored['narrative_score']}/10, "
-                      f"{scored['format']}, {scored['funnel_stage']}){flag}{pain}: {item['title'][:60]}")
+                      f"{scored['Where_to_write']}, {scored['funnel_stage']}){flag}{pain}: {item['title'][:60]}")
                 if save_to_hydradb(item, scored):
                     hydradb_saved += 1
             else:
