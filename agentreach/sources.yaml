@@ -1,0 +1,41 @@
+reddit:
+  include:
+    - vector_database
+    - LLMDevs
+    - AI_Agents
+    - databases
+    - MachineLearning
+    - Rag
+    - contextengineering 
+  min_score: 10
+  time_window: day
+
+devto:
+  tags:
+    - ontology
+    - context-engineering
+    - graph-database
+    - llm
+    - memory
+
+medium:
+  tags:
+    - artificial-intelligence
+    - machine-learning
+    - graph-database
+    - vector-database
+
+substack:
+  publications:
+    - gradientflow
+    - thesequence
+    - context&chaos
+    - bennstancilsnewsletter
+
+hackernews:
+  keywords:
+    - graph database
+    - vector database
+    - AI agent memory
+    - knowledge graph
+  min_points: 15
